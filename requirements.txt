@@ -1,0 +1,12 @@
+pandas
+numpy
+nltk
+glob
+tqdm
+re
+subprocess
+beautifulsoup4
+urllib
+trafilatura
+time
+lingua-language-detector
