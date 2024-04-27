@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import nltk
-from transformers import pipeline
 import os
 import glob
 import tqdm
@@ -16,6 +15,7 @@ import trafilatura
 import time
 from datetime import datetime
 import os
+from pathlib import Path
 from lingua import Language, LanguageDetectorBuilder
 
 # /nutch/segments 23 52 simultaneously_segment_clean
@@ -23,7 +23,14 @@ from lingua import Language, LanguageDetectorBuilder
 def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, path_to_dumps):
     print('The starting process...')
 
-    list_of_segments = os.listdir(f'{path_to_nutch}/nutch/simultaneously_segment_clean')
+    list_of_segments = sorted(Path('/home/batyr/workspace/apache-nutch-1.19/correct_urls/segments').iterdir(), key=os.path.getmtime)
+    list_of_segments = [str(dir).split('/')[-1] for dir in list_of_segments] 
+
+    if len(list_of_segments) > 1:
+        list_of_segments = os.listdir(f'{path_to_nutch}/correct_urls/segments')[:-1]
+    else:
+        list_of_segments = 'no segments'
+    
     csv_files = [i[:-4] for i in os.listdir(path_to_csv)]
     print(f'Number of segments are {len(list_of_segments)}')
 
@@ -47,7 +54,7 @@ def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, pat
     
     # the_total_cleaned_data = []
     
-    if len(segments_to_process) > 0 :
+    if len(segments_to_process) > 0 and list_of_segments != 'no segments':
         start = datetime.now()
         languages = [Language.ENGLISH, Language.ARABIC, Language.ARMENIAN, Language.AZERBAIJANI, Language.CHINESE, Language.KAZAKH, Language.MONGOLIAN, Language.RUSSIAN, Language.TURKISH]
         detector = LanguageDetectorBuilder.from_languages(*languages).build()
@@ -55,11 +62,11 @@ def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, pat
             print('Starting the dump extraction process ...')
             if segment not in csv_files:
                 print(f'Creating dump: {segment}')
-                subprocess.run(f'{path_to_nutch}/bin/nutch readseg -dump {path_to_nutch}/nutch/simultaneously_segment_clean/{segment} {path_to_nutch}/{path_to_dumps}/{segment}', shell=True)
+                subprocess.run(f'{path_to_nutch}/bin/nutch readseg -dump {path_to_nutch}/correct_urls/segments/{segment} {path_to_nutch}/{path_to_dumps}/{segment}', shell=True)
 
             dump = segment
 
-            with open(f'{path_to_nutch}/nutch_core_segment_dumps/{dump}/dump', 'r') as dump_file:
+            with open(f'{path_to_nutch}/{path_to_dumps}/{dump}/dump', 'r') as dump_file:
                 all_content = dump_file.read()
 
             # splitting the data by Content::
@@ -98,16 +105,18 @@ def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, pat
 
             df = pd.DataFrame(all_data)
 
-            language_detection = [str(detector.detect_language_of(paragraph)).replace('Language.', '') for paragraph in df['data']]
-            df['language_id'] = language_detection
-            needed_languages = ['ENGLISH', 'KAZAKH', 'RUSSIAN']
-            df = df[df['language_id'].isin(needed_languages)]
+            if df.shape[0] > 0:
+                language_detection = [str(detector.detect_language_of(paragraph)).replace('Language.', '') for paragraph in df['data']]
+                df['language_id'] = language_detection
+                needed_languages = ['ENGLISH', 'KAZAKH', 'RUSSIAN']
+                df = df[df['language_id'].isin(needed_languages)]
 
-            df.to_csv(f'{path_to_csv}/{dump}.csv', index=False)
+                df.to_csv(f'{path_to_csv}/{dump}.csv', index=False)
 
-            if dump in os.listdir(f'{path_to_nutch}/nutch_core_segment_dumps'):
+            if dump in os.listdir(f'{path_to_nutch}/{path_to_dumps}'):
                 print(f'The dump {dump} is deleted ...')
-                subprocess.run(f'rm -rf {path_to_nutch}/nutch_core_segment_dumps/{dump}', shell=True)
+                subprocess.run(f'rm -rf {path_to_nutch}/{path_to_dumps}/{dump}', shell=True)
+        
         end = datetime.now()
         td = (end - start).total_seconds() / 60
         print(f"The time of execution of above program is : {td:.03f}min")

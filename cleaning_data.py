@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import nltk
-from transformers import pipeline
 import os
 import glob
 import tqdm
