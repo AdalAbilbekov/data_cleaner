@@ -17,22 +17,30 @@ from datetime import datetime
 import os
 from pathlib import Path
 from lingua import Language, LanguageDetectorBuilder
+import logging
 
 # /nutch/segments 23 52 simultaneously_segment_clean
+
+def getting_number_of_words(data_frame):
+    check_string = ' '.join(data_frame['data'])
+    n_words = check_string.replace('\n', ' ').split()
+    return len(n_words)
+
 
 def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, path_to_dumps):
     print('The starting process...')
 
-    list_of_segments = sorted(Path('/home/batyr/workspace/apache-nutch-1.19/correct_urls/segments').iterdir(), key=os.path.getmtime)
+    list_of_segments = sorted(Path(f'{path_to_nutch}/two_k_links/segments').iterdir(), key=os.path.getmtime)
     list_of_segments = [str(dir).split('/')[-1] for dir in list_of_segments] 
 
     if len(list_of_segments) > 1:
-        list_of_segments = os.listdir(f'{path_to_nutch}/correct_urls/segments')[:-1]
+        list_of_segments = list_of_segments[:-1]
     else:
         list_of_segments = 'no segments'
     
     csv_files = [i[:-4] for i in os.listdir(path_to_csv)]
     print(f'Number of segments are {len(list_of_segments)}')
+    # print(list_of_segments)
 
     segments_to_process = set(list_of_segments) - set(csv_files)
     print(f'Number of segments process are {len(segments_to_process)}')
@@ -56,14 +64,15 @@ def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, pat
     
     if len(segments_to_process) > 0 and list_of_segments != 'no segments':
         start = datetime.now()
+        # logger = logging.getLogger(__name__)
         languages = [Language.ENGLISH, Language.ARABIC, Language.ARMENIAN, Language.AZERBAIJANI, Language.CHINESE, Language.KAZAKH, Language.MONGOLIAN, Language.RUSSIAN, Language.TURKISH]
         detector = LanguageDetectorBuilder.from_languages(*languages).build()
         for segment in tqdm.tqdm(segments_to_process):
             print('Starting the dump extraction process ...')
             if segment not in csv_files:
                 print(f'Creating dump: {segment}')
-                subprocess.run(f'{path_to_nutch}/bin/nutch readseg -dump {path_to_nutch}/correct_urls/segments/{segment} {path_to_nutch}/{path_to_dumps}/{segment}', shell=True)
-
+                subprocess.run(f'{path_to_nutch}/bin/nutch readseg -dump {path_to_nutch}/two_k_links/segments/{segment} {path_to_nutch}/{path_to_dumps}/{segment}', shell=True)
+            
             dump = segment
 
             with open(f'{path_to_nutch}/{path_to_dumps}/{dump}/dump', 'r') as dump_file:
@@ -109,14 +118,22 @@ def cleaning_dump_extract_csv(path_to_nutch, path_to_csv, path_to_java_home, pat
                 language_detection = [str(detector.detect_language_of(paragraph)).replace('Language.', '') for paragraph in df['data']]
                 df['language_id'] = language_detection
                 needed_languages = ['ENGLISH', 'KAZAKH', 'RUSSIAN']
-                df = df[df['language_id'].isin(needed_languages)]
+                df_three_languages = df[df['language_id'].isin(needed_languages)]
+                df_three_languages = df_three_languages.drop_duplicates(subset=['data'])
+                
+                all_tokens = getting_number_of_words(df)
+                cleaned_tokens = getting_number_of_words(df_three_languages)
 
-                df.to_csv(f'{path_to_csv}/{dump}.csv', index=False)
+                logger = f'Segment: {dump} | Date: {start.strftime("%Y-%m-%d %H:%M:%S")} | Tokens all: {all_tokens} | Tokens cleaned: {cleaned_tokens}'
+                with open('tokkens_info_nurinform.txt', 'a') as txt_file:
+                    txt_file.write("%s\n" % logger)
+
+                df_three_languages.to_csv(f'{path_to_csv}/{dump}.csv', index=False, encoding= 'utf-8')
 
             if dump in os.listdir(f'{path_to_nutch}/{path_to_dumps}'):
                 print(f'The dump {dump} is deleted ...')
                 subprocess.run(f'rm -rf {path_to_nutch}/{path_to_dumps}/{dump}', shell=True)
-        
+
         end = datetime.now()
         td = (end - start).total_seconds() / 60
         print(f"The time of execution of above program is : {td:.03f}min")
@@ -132,6 +149,7 @@ if __name__ == "__main__":
     csv_d = args.csv
     iteration = 0
     size = os.get_terminal_size() 
+    # logging.basicConfig(filename='cleaning.log', encoding='utf-8', level=logging.DEBUG)
     while True:
         iteration += 1
         print(f'New iteration has started, The iteration: {iteration}')
